@@ -1,114 +1,49 @@
-# extract_scopus.py
-
 import os
-import requests
 import json
-import time
-from dotenv import load_dotenv
+import feedparser
+import urllib.parse  # ✅ Import pour encoder l’URL
 
-load_dotenv()
-API_KEY = os.getenv("SCOPUS_API_KEY")
+os.makedirs("data", exist_ok=True)
 
-if not API_KEY:
-    raise ValueError("❌ SCOPUS_API_KEY non trouvée dans .env")
+def extract_full_data(query="machine learning", max_results=250):
+    print(f"🔍 Lancement de l'extraction ArXiv pour : '{query}'...")
 
-SEARCH_URL = "https://api.elsevier.com/content/search/scopus"
-DETAILS_URL = "https://api.elsevier.com/content/abstract/scopus_id/"
+    base_url = "http://export.arxiv.org/api/query?"
+    query_encoded = urllib.parse.quote(query)  # ✅ Encodage correct
+    search_query = f"search_query=all:{query_encoded}&start=0&max_results={max_results}"
+    url = base_url + search_query
 
-HEADERS = {
-    "X-ELS-APIKey": API_KEY,
-    "Accept": "application/json"
-}
+    feed = feedparser.parse(url)
 
-def search_scopus(query, max_results=100, count_per_page=25):
-    results = []
-    start = 0
+    articles = []
+    for entry in feed.entries:
+        title = entry.title.strip().replace("\n", " ")
+        summary = entry.summary.strip().replace("\n", " ")
+        published = entry.published[:10]
+        authors = [author.name for author in entry.authors]
+        categories = [tag['term'] for tag in entry.tags]
+        article_id = entry.id
 
-    while start < max_results:
-        params = {"query": query, "count": count_per_page, "start": start}
-        print(f"🔎 Extraction {start} à {start + count_per_page}")
-        resp = requests.get(SEARCH_URL, headers=HEADERS, params=params)
+        article = {
+            "title": title,
+            "abstract": summary,
+            "publication_year": published[:4],
+            "journal_name": "ArXiv",
+            "doi": None,
+            "scopus_identifier": article_id,
+            "keywords": ", ".join(categories),
+            "subject_areas": ", ".join(categories),
+            "authors": [{"full_name": a, "scopus_author_id": None, "orcid": None,
+                         "main_affiliation_id": None,
+                         "affiliation": {"affiliation_id": None, "name": None, "country": None}} for a in authors]
+        }
 
-        if resp.status_code != 200:
-            print("❌ Erreur API:", resp.status_code)
-            break
+        articles.append(article)
 
-        entries = resp.json().get("search-results", {}).get("entry", [])
-        if not entries:
-            break
+    with open("data/arxiv_full_data.json", "w", encoding="utf-8") as f:
+        json.dump(articles, f, ensure_ascii=False, indent=4)
 
-        results.extend(entries)
-        start += count_per_page
-        time.sleep(1)
-
-    return results
-
-def get_article_details(scopus_id):
-    url = f"{DETAILS_URL}{scopus_id}"
-    resp = requests.get(url, headers=HEADERS)
-
-    if resp.status_code != 200:
-        print(f"⚠️ Article {scopus_id} non détaillé.")
-        return {}
-
-    data = resp.json().get("abstracts-retrieval-response", {})
-
-    title = data.get("core", {}).get("dc:title", "")
-    abstract = data.get("core", {}).get("dc:description", "")
-    doi = data.get("core", {}).get("prism:doi", "")
-    publication = data.get("core", {}).get("prism:publicationName", "")
-    year = data.get("core", {}).get("prism:coverDate", "")
-
-    # Auteurs
-    authors = data.get("authors", {}).get("author", [])
-
-    # Mots-clés
-    keywords_list = data.get("authkeywords", {}).get("author-keyword", [])
-    keywords = ", ".join(k.get("$", "") for k in keywords_list)
-
-    # Sujets
-    subject_list = data.get("subject-areas", {}).get("subject-area", [])
-    subject_areas = ", ".join(s.get("$", "") for s in subject_list)
-
-    return {
-        "title": title,
-        "abstract": abstract,
-        "doi": doi,
-        "journal_name": publication,
-        "publication_year": year,
-        "authors": authors,
-        "keywords": keywords,
-        "subject_areas": subject_areas,
-        "scopus_id": scopus_id
-    }
-
-def extract_full_data(query):
-    entries = search_scopus(query, max_results=100)
-    full_data = []
-
-    for entry in entries:
-        scopus_identifier = entry.get("dc:identifier", "")
-        if not scopus_identifier.startswith("SCOPUS_ID:"):
-            continue
-
-        scopus_id = scopus_identifier.split(":")[1]
-        print(f"➡️ Détails pour {scopus_id}")
-        details = get_article_details(scopus_id)
-
-        if details:
-            full_data.append(details)
-        time.sleep(1)
-
-    return full_data
+    print(f"✅ {len(articles)} articles sauvegardés dans data/arxiv_full_data.json")
 
 if __name__ == "__main__":
-    os.makedirs("data", exist_ok=True)
-    query = "machine learning"
-
-    print("⏳ Extraction en cours...")
-    data = extract_full_data(query)
-
-    with open("data/scopus_data.json", "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-
-    print("✅ Fichier 'scopus_data.json' généré avec abstracts, auteurs, mots-clés.")
+    extract_full_data("machine learning")
