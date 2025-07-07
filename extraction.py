@@ -1,114 +1,74 @@
-# extract_scopus.py
-
 import os
 import requests
 import json
 import time
-from dotenv import load_dotenv
+import feedparser
 
-load_dotenv()
-API_KEY = os.getenv("SCOPUS_API_KEY")
+# Chemin où enregistrer les données
+DATA_PATH = "data/my_data.json"
 
-if not API_KEY:
-    raise ValueError("❌ SCOPUS_API_KEY non trouvée dans .env")
-
-SEARCH_URL = "https://api.elsevier.com/content/search/scopus"
-DETAILS_URL = "https://api.elsevier.com/content/abstract/scopus_id/"
-
-HEADERS = {
-    "X-ELS-APIKey": API_KEY,
-    "Accept": "application/json"
-}
-
-def search_scopus(query, max_results=100, count_per_page=25):
+def search_arxiv(query, max_results=100):
+    """
+    Recherche d'articles Arxiv par requête.
+    """
     results = []
     start = 0
+    count_per_page = 25
 
     while start < max_results:
-        params = {"query": query, "count": count_per_page, "start": start}
-        print(f"🔎 Extraction {start} à {start + count_per_page}")
-        resp = requests.get(SEARCH_URL, headers=HEADERS, params=params)
+        url = "http://export.arxiv.org/api/query"
+        params = {
+            "search_query": f'all:"{query}"',
+            "start": start,
+            "max_results": count_per_page
+        }
 
-        if resp.status_code != 200:
-            print("❌ Erreur API:", resp.status_code)
+        print(f"🔎 Extraction {start} à {start + count_per_page}...")
+        
+        try:
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            feed = feedparser.parse(response.content)
+
+            if not feed.entries:
+                print("✅ Aucun autre résultat, extraction terminée.")
+                break
+
+            for entry in feed.entries:
+                authors = [author.name for author in entry.authors]
+
+                article = {
+                    "title": entry.title,
+                    "abstract": entry.summary,
+                    "doi": "",  # Pas toujours dispo dans Arxiv
+                    "journal_name": "Arxiv",
+                    "publication_year": entry.published.split("T")[0],
+                    "authors": authors,
+                    "keywords": "",  # Non disponible
+                    "subject_areas": "",  # Non disponible
+                    "scopus_id": entry.id  # On garde l'ID Arxiv comme identifiant
+                }
+
+                results.append(article)
+
+            start += count_per_page
+            time.sleep(1)  # Politesse
+
+        except Exception as e:
+            print(f"❌ Erreur : {e}")
             break
-
-        entries = resp.json().get("search-results", {}).get("entry", [])
-        if not entries:
-            break
-
-        results.extend(entries)
-        start += count_per_page
-        time.sleep(1)
 
     return results
 
-def get_article_details(scopus_id):
-    url = f"{DETAILS_URL}{scopus_id}"
-    resp = requests.get(url, headers=HEADERS)
-
-    if resp.status_code != 200:
-        print(f"⚠️ Article {scopus_id} non détaillé.")
-        return {}
-
-    data = resp.json().get("abstracts-retrieval-response", {})
-
-    title = data.get("core", {}).get("dc:title", "")
-    abstract = data.get("core", {}).get("dc:description", "")
-    doi = data.get("core", {}).get("prism:doi", "")
-    publication = data.get("core", {}).get("prism:publicationName", "")
-    year = data.get("core", {}).get("prism:coverDate", "")
-
-    # Auteurs
-    authors = data.get("authors", {}).get("author", [])
-
-    # Mots-clés
-    keywords_list = data.get("authkeywords", {}).get("author-keyword", [])
-    keywords = ", ".join(k.get("$", "") for k in keywords_list)
-
-    # Sujets
-    subject_list = data.get("subject-areas", {}).get("subject-area", [])
-    subject_areas = ", ".join(s.get("$", "") for s in subject_list)
-
-    return {
-        "title": title,
-        "abstract": abstract,
-        "doi": doi,
-        "journal_name": publication,
-        "publication_year": year,
-        "authors": authors,
-        "keywords": keywords,
-        "subject_areas": subject_areas,
-        "scopus_id": scopus_id
-    }
-
-def extract_full_data(query):
-    entries = search_scopus(query, max_results=100)
-    full_data = []
-
-    for entry in entries:
-        scopus_identifier = entry.get("dc:identifier", "")
-        if not scopus_identifier.startswith("SCOPUS_ID:"):
-            continue
-
-        scopus_id = scopus_identifier.split(":")[1]
-        print(f"➡️ Détails pour {scopus_id}")
-        details = get_article_details(scopus_id)
-
-        if details:
-            full_data.append(details)
-        time.sleep(1)
-
-    return full_data
 
 if __name__ == "__main__":
     os.makedirs("data", exist_ok=True)
-    query = "machine learning"
+    query = "machine learning"  # Modifie ta requête ici
 
-    print("⏳ Extraction en cours...")
-    data = extract_full_data(query)
+    print("⏳ Extraction en cours avec Arxiv...")
+    data = search_arxiv(query, max_results=100)
 
-    with open("data/scopus_data.json", "w", encoding="utf-8") as f:
+    with open(DATA_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
-    print("✅ Fichier 'scopus_data.json' généré avec abstracts, auteurs, mots-clés.")
+    print(f"✅ Extraction terminée. {len(data)} articles enregistrés dans '{DATA_PATH}'")
