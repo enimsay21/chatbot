@@ -1,33 +1,38 @@
 import os
-import requests
 import json
 import time
 import feedparser
+import urllib.parse
+import requests
 
-# Chemin où enregistrer les données
-DATA_PATH = "data/my_data.json"
+# Chemin du dossier de sauvegarde
+DATA_PATH = "data/arxiv_data.json"
+os.makedirs("data", exist_ok=True)
 
-def search_arxiv(query, max_results=100):
+def search_arxiv(query="machine learning", max_results=100):
     """
-    Recherche d'articles Arxiv par requête.
+    Recherche et extrait des articles depuis ArXiv en fonction d'une requête donnée.
+    Enregistre les résultats au format JSON.
     """
-    results = []
+    articles = []
+    base_url = "http://export.arxiv.org/api/query"
     start = 0
     count_per_page = 25
 
     while start < max_results:
-        url = "http://export.arxiv.org/api/query"
+        # Encodage correct de la requête pour l'URL
         params = {
             "search_query": f'all:"{query}"',
             "start": start,
             "max_results": count_per_page
         }
 
-        print(f"🔎 Extraction {start} à {start + count_per_page}...")
-        
+        print(f"🔎 Extraction des résultats {start + 1} à {start + count_per_page}...")
+
         try:
-            response = requests.get(url, params=params, timeout=10)
+            response = requests.get(base_url, params=params, timeout=10)
             response.raise_for_status()
+
             feed = feedparser.parse(response.content)
 
             if not feed.entries:
@@ -35,40 +40,45 @@ def search_arxiv(query, max_results=100):
                 break
 
             for entry in feed.entries:
-                authors = [author.name for author in entry.authors]
+                title = entry.title.strip().replace("\n", " ")
+                summary = entry.summary.strip().replace("\n", " ")
+                published = entry.published[:10] if 'published' in entry else ""
+                publication_year = published[:4] if published else None
+                authors = [author.name for author in entry.authors] if 'authors' in entry else []
+                categories = [tag['term'] for tag in entry.tags] if 'tags' in entry else []
+                article_id = entry.id
 
                 article = {
-                    "title": entry.title,
-                    "abstract": entry.summary,
-                    "doi": "",  # Pas toujours dispo dans Arxiv
-                    "journal_name": "Arxiv",
-                    "publication_year": entry.published.split("T")[0],
-                    "authors": authors,
-                    "keywords": "",  # Non disponible
-                    "subject_areas": "",  # Non disponible
-                    "scopus_id": entry.id  # On garde l'ID Arxiv comme identifiant
+                    "title": title,
+                    "abstract": summary,
+                    "publication_year": publication_year,
+                    "journal_name": "ArXiv",
+                    "doi": None,
+                    "scopus_identifier": article_id,
+                    "keywords": ", ".join(categories),
+                    "subject_areas": ", ".join(categories),
+                    "authors": authors  # Simple liste d'auteurs
                 }
 
-                results.append(article)
+                articles.append(article)
 
             start += count_per_page
-            time.sleep(1)  # Politesse
+            time.sleep(1)  # Pause entre les requêtes pour respecter les bonnes pratiques
 
         except Exception as e:
-            print(f"❌ Erreur : {e}")
+            print(f"❌ Erreur lors de la récupération des articles : {e}")
             break
 
-    return results
-
+    return articles
 
 if __name__ == "__main__":
-    os.makedirs("data", exist_ok=True)
-    query = "machine learning"  # Modifie ta requête ici
+    query = "machine learning"  # 👉 Tu peux changer la requête ici
+    max_results = 100
 
-    print("⏳ Extraction en cours avec Arxiv...")
-    data = search_arxiv(query, max_results=100)
+    print(f"⏳ Lancement de l'extraction ArXiv pour '{query}'...")
+    extracted_articles = search_arxiv(query, max_results=max_results)
 
     with open(DATA_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+        json.dump(extracted_articles, f, ensure_ascii=False, indent=4)
 
-    print(f"✅ Extraction terminée. {len(data)} articles enregistrés dans '{DATA_PATH}'")
+    print(f"✅ Extraction terminée : {len(extracted_articles)} articles sauvegardés dans '{DATA_PATH}'.")

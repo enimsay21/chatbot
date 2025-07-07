@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 from collections import Counter
 import re
 import os
+from qa_system import QASystem
 
 # Configuration de la page
 st.set_page_config(
@@ -203,6 +204,8 @@ class ChatbotDatabase:
         except Exception as e:
             st.error(f"Erreur statistiques: {e}")
             return {}
+        
+        
     
     def get_authors_list(self):
         try:
@@ -244,6 +247,7 @@ class ChatbotDatabase:
         except Exception as e:
             st.error(f"Erreur lors de la récupération des années: {e}")
             return (2000, 2025)
+    
 
 @st.cache_resource
 def init_database():

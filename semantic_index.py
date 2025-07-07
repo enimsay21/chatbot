@@ -1,172 +1,123 @@
-from sentence_transformers import SentenceTransformer
+import os
+import json
+import time
 import faiss
+import pickle
 import numpy as np
-import mysql.connector
 import pandas as pd
 import logging
 from typing import List, Dict, Any, Optional
+from sentence_transformers import SentenceTransformer
+from sqlalchemy import create_engine, text
+from dotenv import load_dotenv
+
+# ======================= Configuration =======================
+
+# Chargement des variables d'environnement (.env)
+load_dotenv()
+
+MYSQL_USER = os.getenv("MYSQL_USER", "root")
+MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD", "")
+MYSQL_HOST = os.getenv("MYSQL_HOST", "localhost")
+MYSQL_DB = os.getenv("MYSQL_DATABASE", "chatbot")
+
+# Connexion SQLAlchemy
+engine = create_engine(f"mysql+pymysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}/{MYSQL_DB}")
+
+# Dossier pour sauvegarder les modèles
+os.makedirs("models", exist_ok=True)
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# ======================= Classe de Recherche =======================
+
 class SemanticSearch:
-    def __init__(self, db_config: Dict[str, str], model_name: str = 'all-MiniLM-L6-v2'):
-        """Initialise le système de recherche sémantique
-        
-        Args:
-            db_config: Configuration de la base de données MySQL
-            model_name: Nom du modèle SentenceTransformer à utiliser
-        """
-        self.db_config = db_config
+    def __init__(self, model_name: str = 'all-MiniLM-L6-v2'):
         self.model_name = model_name
         self.model = None
         self.index = None
-        self.articles = []
-        
+        self.metadata = []
+
         try:
             self._initialize_model()
             self._build_index()
         except Exception as e:
-            logger.error(f"Échec de l'initialisation: {str(e)}")
+            logger.error(f"Erreur d'initialisation : {e}")
             raise
 
     def _initialize_model(self):
-        """Charge le modèle SentenceTransformer avec gestion des erreurs"""
         logger.info(f"Chargement du modèle {self.model_name}...")
-        try:
-            # Vérification préalable des dépendances
-            import torch
-            if not torch.cuda.is_available():
-                logger.warning("CUDA non disponible - Utilisation du CPU")
-            
-            self.model = SentenceTransformer(
-                self.model_name,
-                device='cuda' if torch.cuda.is_available() else 'cpu',
-                cache_folder='./models'  # Dossier personnalisé pour le cache
-            )
-            logger.info("Modèle chargé avec succès")
-        except Exception as e:
-            logger.error(f"Erreur lors du chargement du modèle: {str(e)}")
-            raise
-
-    def _get_connection(self) -> Optional[mysql.connector.MySQLConnection]:
-        """Établit une connexion à la base de données"""
-        try:
-            conn = mysql.connector.connect(
-                host=self.db_config['host'],
-                user=self.db_config['user'],
-                password=self.db_config['password'],
-                database=self.db_config['database'],
-                connect_timeout=10  # Timeout de connexion
-            )
-            return conn
-        except Exception as e:
-            logger.error(f"Échec de la connexion à la DB: {str(e)}")
-            return None
+        self.model = SentenceTransformer(self.model_name)
+        logger.info("Modèle chargé avec succès.")
 
     def _build_index(self):
-        """Construit l'index FAISS à partir des articles de la base de données"""
-        logger.info("Construction de l'index sémantique...")
-        
-        conn = self._get_connection()
-        if not conn:
-            raise ConnectionError("Connexion à la base de données échouée")
+        logger.info("🔍 Récupération des articles depuis la base de données...")
+        with engine.connect() as conn:
+            result = conn.execute(text("""
+                SELECT id, title, abstract, publication_year, scopus_identifier, doi, journal_name
+                FROM article
+                WHERE abstract IS NOT NULL AND abstract != ''
+            """))
+            articles = result.fetchall()
 
-        try:
-            # Requête optimisée avec DISTINCT pour éviter les doublons
-            query = """
-                SELECT 
-                    a.id, 
-                    a.title, 
-                    a.abstract, 
-                    a.publication_year,
-                    a.journal_name,
-                    a.doi,
-                    GROUP_CONCAT(DISTINCT au.full_name SEPARATOR ', ') as authors
-                FROM article a
-                LEFT JOIN author_article aa ON a.id = aa.article_id
-                LEFT JOIN author au ON aa.author_id = au.id
-                WHERE a.abstract IS NOT NULL AND a.abstract != ''
-                GROUP BY a.id
-                HAVING COUNT(a.id) > 0
-            """
-            
-            logger.info("Récupération des articles depuis la base de données...")
-            df = pd.read_sql(query, conn)
-            
-            if df.empty:
-                raise ValueError("Aucun article trouvé dans la base de données")
-            
-            self.articles = df.to_dict('records')
-            logger.info(f"{len(self.articles)} articles chargés")
+        if not articles:
+            logger.warning("Aucun article trouvé.")
+            return
 
-            # Encodage des abstracts
-            logger.info("Encodage des articles...")
-            embeddings = self.model.encode(
-                df['abstract'].tolist(),
-                show_progress_bar=True,
-                batch_size=32,
-                convert_to_numpy=True
-            )
-            
-            # Création de l'index FAISS
-            logger.info("Construction de l'index FAISS...")
-            self.index = faiss.IndexFlatL2(embeddings.shape[1])
-            self.index.add(embeddings.astype('float32'))
-            
-            logger.info(f"Index construit avec {self.index.ntotal} vecteurs")
+        abstracts = [row.abstract for row in articles]
+        self.metadata = [
+            {
+                "id": row.id,
+                "title": row.title,
+                "abstract": row.abstract,
+                "publication_year": row.publication_year,
+                "scopus_identifier": row.scopus_identifier,
+                "doi": row.doi,
+                "journal_name": row.journal_name
+            }
+            for row in articles
+        ]
 
-        except Exception as e:
-            logger.error(f"Erreur lors de la construction de l'index: {str(e)}")
-            raise
-        finally:
-            if conn and conn.is_connected():
-                conn.close()
+        logger.info("🧠 Encodage des résumés...")
+        embeddings = self.model.encode(abstracts, show_progress_bar=True, convert_to_numpy=True).astype('float32')
+        dim = embeddings.shape[1]
+
+        self.index = faiss.IndexFlatL2(dim)
+        self.index.add(embeddings)
+
+        # Sauvegarde des fichiers
+        faiss.write_index(self.index, "models/scopus_abstracts.index")
+        with open("models/metadata.pkl", "wb") as f:
+            pickle.dump(self.metadata, f)
+
+        logger.info(f"✅ Index FAISS construit avec {len(self.metadata)} articles.")
 
     def search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
-        """Effectue une recherche sémantique
-        
-        Args:
-            query: Requête textuelle
-            top_k: Nombre de résultats à retourner
-            
-        Returns:
-            Liste des articles pertinents avec scores de similarité
-        """
-        if not self.index:
-            raise RuntimeError("Index sémantique non initialisé")
+        if not self.index or not self.metadata:
+            raise RuntimeError("Index ou métadonnées non initialisés.")
 
-        try:
-            # Encodage de la requête
-            query_embedding = self.model.encode(
-                [query],
-                show_progress_bar=False,
-                convert_to_numpy=True
-            ).astype('float32')
+        query_vector = self.model.encode([query], convert_to_numpy=True).astype('float32')
+        distances, indices = self.index.search(query_vector, top_k)
 
-            # Recherche dans l'index
-            distances, indices = self.index.search(query_embedding, top_k)
-            
-            # Formatage des résultats
-            results = []
-            for idx, distance in zip(indices[0], distances[0]):
-                if idx >= len(self.articles):
-                    continue
-                    
-                article = self.articles[idx].copy()
-                # Normalisation du score entre 0 et 1
-                article['similarity_score'] = max(0, 1 - (distance / 4))  
-                results.append(article)
-            
-            # Tri par score décroissant
-            return sorted(results, key=lambda x: x['similarity_score'], reverse=True)
+        results = []
+        for idx, distance in zip(indices[0], distances[0]):
+            if idx >= len(self.metadata):
+                continue
+            result = self.metadata[idx].copy()
+            result['similarity_score'] = max(0, 1 - (distance / 4))
+            results.append(result)
 
-        except Exception as e:
-            logger.error(f"Erreur lors de la recherche: {str(e)}")
-            raise
+        return sorted(results, key=lambda x: x['similarity_score'], reverse=True)
 
-    def refresh_index(self):
-        """Rafraîchit l'index avec les nouveaux articles"""
-        logger.info("Rafraîchissement de l'index...")
-        self._build_index()
+# ======================= Exécution =======================
+
+if __name__ == "__main__":
+    search_engine = SemanticSearch()
+    example_query = "deep learning applications in healthcare"
+    results = search_engine.search(example_query, top_k=3)
+
+    print("\n🔎 Résultats de la recherche :")
+    for res in results:
+        print(f"- {res['title']} ({res['publication_year']}) | Score: {res['similarity_score']:.2f}")
