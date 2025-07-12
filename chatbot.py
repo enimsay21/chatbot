@@ -25,9 +25,12 @@ class ScopusSearchEngine:
             if idx >= len(self.metadata) or idx < 0:
                 continue
             item = self.metadata[idx].copy()
-             # Formatage des auteurs si nécessaire
-        if 'authors' in item and isinstance(item['authors'], list):
-            item['authors'] = ', '.join(item['authors'])
+           # Formatage des auteurs si nécessaire
+            if 'authors' in item and isinstance(item['authors'], list):
+             item['authors'] = ', '.join(item['authors'])
+            elif not item.get('authors'):
+               item['authors'] = 'Auteurs inconnus'
+
             item['similarity_score'] = max(0, 1 - (distance / 4))  # Normalisation simple
             results.append(item)
         

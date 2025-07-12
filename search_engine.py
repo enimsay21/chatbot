@@ -12,7 +12,7 @@ class ScopusSearchEngine:
         self.metadata = pd.read_pickle(metadata_path)
 
         # Vérifier les colonnes présentes
-        print("Colonnes trouvées :", self.metadata.columns.tolist())
+        print("Colonnes trouvées :", self.metadata[0].keys() if isinstance(self.metadata, list) else self.metadata.columns.tolist())
 
         # Initialiser SentenceTransformer
         self.model = SentenceTransformer('all-MiniLM-L6-v2')
@@ -27,15 +27,19 @@ class ScopusSearchEngine:
         results = []
         for idx, distance in zip(indices[0], distances[0]):
             if 0 <= idx < len(self.metadata):
-                row = self.metadata.iloc[idx]
+                # Si ton pickle est une liste de dicts (dict), tu fais :
+                if isinstance(self.metadata, list):
+                    row = self.metadata[idx]
+                else:
+                    row = self.metadata.iloc[idx]
 
                 result = {
                     "title": row.get("title", "Titre inconnu"),
                     "abstract": row.get("abstract", "Résumé indisponible"),
-                    "authors": row.get("authors", "Auteurs inconnus"),
+                    "authors": row.get("authors", "Auteurs inconnus"),  # ✅ Corrigé ici
                     "publication_year": row.get("publication_year", "Année inconnue"),
-                    "pdf_url": row.get("pdf_url", None), 
-                    "similarity_score": 1 - distance
+                    "pdf_url": row.get("pdf_url", None),
+                    "similarity_score": max(0, 1 - (distance / 4))  # ✅ Normalisation plus douce
                 }
 
                 results.append(result)

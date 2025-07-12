@@ -28,16 +28,7 @@ st.markdown("""
         margin-left: 20%;
         box-shadow: 0 2px 10px rgba(0, 206, 209, 0.3);
     }
-    .bot-message {
-        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-        color: #333;
-        padding: 1rem 1.5rem;
-        border-radius: 18px 18px 18px 5px;
-        margin: 1rem 0;
-        margin-right: 20%;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-        border-left: 4px solid #00CED1;
-    }
+   
     .article-card {
         background: white;
         padding: 1.5rem;
@@ -202,33 +193,31 @@ def init_database():
     return ChatbotDatabase()
 
 def display_authors(authors):
-    """Afficher les auteurs avec style"""
-    if not authors:
-        return "Auteur inconnu"
+    if not authors or authors.strip() == "Auteurs inconnus":
+        return ""
     
     if isinstance(authors, list):
         authors_list = authors
     elif isinstance(authors, str):
         authors_list = [a.strip() for a in authors.split(',')]
     else:
-        return "Auteur inconnu"
-    
-    authors_list = [a for a in authors_list if a and a != 'None']
-    
+        return ""
+
+    authors_list = [a for a in authors_list if a and a.lower() != 'none']
+
     if not authors_list:
-        return "Auteur inconnu"
-    
+        return ""
+
     author_tags = []
     for author in authors_list[:5]:
         author_tags.append(f'<span class="author-tag">{author}</span>')
-    
+
     if len(authors_list) > 5:
         author_tags.append(f'<span class="author-tag">+{len(authors_list)-5} autres</span>')
-    
+
     return ' '.join(author_tags)
 
 def create_word_cloud(text):
-    """Créer un nuage de mots"""
     try:
         text = re.sub(r'[^\w\s]', '', text.lower())
         words = text.split()
@@ -245,19 +234,17 @@ def create_word_cloud(text):
         st.error(f"Erreur lors de la création du nuage de mots: {e}")
 
 def create_visualizations(stats):
-    """Créer des visualisations interactives"""
     if stats.get('articles_by_year'):
         df_years = pd.DataFrame(stats['articles_by_year'])
-        fig_years = px.bar(df_years, x='publication_year', y='count', title='📊 Articles par Année', color='count')
+        fig_years = px.bar(df_years, x='publication_year', y='count', title=' Articles par Année', color='count')
         st.plotly_chart(fig_years, use_container_width=True)
     
     if stats.get('top_authors'):
         df_authors = pd.DataFrame(stats['top_authors'][:8])
-        fig_authors = px.pie(df_authors, values='count', names='full_name', title='👥 Top Auteurs')
+        fig_authors = px.pie(df_authors, values='count', names='full_name', title=' Top Auteurs')
         st.plotly_chart(fig_authors, use_container_width=True)
 
 def main():
-    # Initialisation
     db = init_database()
     if 'scopus_chatbot' not in st.session_state:
         st.session_state.scopus_chatbot = ScopusChatbot()
@@ -266,7 +253,6 @@ def main():
     if 'filters' not in st.session_state:
         st.session_state.filters = {'year_from': 2000, 'year_to': 2025, 'authors': []}
 
-    # Header
     st.markdown("""
     <div class="main-header">
         <h1>🔬 Chatbot Scientifique</h1>
@@ -274,12 +260,9 @@ def main():
     </div>
     """, unsafe_allow_html=True)
 
-    # Sidebar avec filtres
     with st.sidebar:
-        st.header("🔍 Filtres")
+        st.header("Filtres")
         years = db.get_years_range()
-        
-        # Filtres par année
         year_from, year_to = st.slider(
             "Période de publication",
             min_value=years[0],
@@ -287,16 +270,12 @@ def main():
             value=(years[0], years[1]),
             key='year_filter'
         )
-        
-        # Filtre par auteurs
         authors_list = db.get_authors_list()
         selected_authors = st.multiselect(
             "Sélectionner des auteurs",
             options=authors_list,
             key='author_filter'
         )
-        
-        # Mettre à jour les filtres
         if (year_from != st.session_state.filters['year_from'] or 
             year_to != st.session_state.filters['year_to'] or 
             selected_authors != st.session_state.filters['authors']):
@@ -307,103 +286,72 @@ def main():
             }
             st.rerun()
 
-    # Zone de chat
     chat_container = st.container()
-    
-    # Zone de saisie
     with st.form(key='chat_form'):
         user_input = st.text_area("Posez votre question ici :", height=100, key="input")
         submitted = st.form_submit_button("Rechercher")
 
-    # Gestion des recherches
     if submitted and user_input:
         st.session_state.messages.append({"role": "user", "content": user_input})
         
         with st.spinner("Recherche en cours..."):
-            # Récupération des résultats bruts
             raw_results = st.session_state.scopus_chatbot.search_engine.search(user_input, k=50)
-            
-            # Application des filtres
             filtered_results = []
             for article in raw_results:
-                # Filtre par année
                 year_ok = True
                 pub_year = article.get('publication_year')
                 if pub_year and str(pub_year).isdigit():
                     pub_year = int(pub_year)
                     year_ok = st.session_state.filters['year_from'] <= pub_year <= st.session_state.filters['year_to']
-                
-                # Filtre par auteur
                 authors_ok = True
                 if st.session_state.filters['authors']:
                     authors = article.get('authors', [])
                     if isinstance(authors, str):
                         authors = [a.strip() for a in authors.split(',')]
                     authors_ok = any(author in authors for author in st.session_state.filters['authors'])
-                
                 if year_ok and authors_ok:
                     filtered_results.append(article)
 
-            # Préparation de la réponse
             if filtered_results:
-                response = f"🔍 {len(filtered_results)} résultat(s) trouvé(s)"
-                if st.session_state.filters['year_from'] != years[0] or st.session_state.filters['year_to'] != years[1]:
-                    response += f" entre {st.session_state.filters['year_from']} et {st.session_state.filters['year_to']}"
-                if st.session_state.filters['authors']:
-                    response += f" pour {', '.join(st.session_state.filters['authors'][:3])}{'...' if len(st.session_state.filters['authors']) > 3 else ''}"
-                
-                st.session_state.messages.append({"role": "assistant", "content": response})
+                st.session_state.messages.append({"role": "assistant", "content": ""})
             else:
-                st.session_state.messages.append({"role": "assistant", "content": "❌ Aucun résultat trouvé avec ces filtres"})
+                st.session_state.messages.append({"role": "assistant", "content": " Aucun résultat trouvé avec ces filtres"})
 
-    # Affichage des messages
     with chat_container:
         for msg in st.session_state.messages:
             if msg["role"] == "user":
                 st.markdown(f'<div class="user-message">{msg["content"]}</div>', unsafe_allow_html=True)
             else:
                 st.markdown(f'<div class="bot-message">{msg["content"]}</div>', unsafe_allow_html=True)
-                
-                # Affichage des résultats si c'est le dernier message et qu'il y a des résultats
                 if (msg == st.session_state.messages[-1] and 
-                    "résultat(s)" in msg["content"] and 
                     'raw_results' in locals()):
-                    
-                    for article in filtered_results[:5]:  # Limite à 5 résultats
+                    for article in filtered_results[:2]:
                         st.markdown('<div class="article-card">', unsafe_allow_html=True)
                         st.markdown(f'<div class="article-title">{article.get("title", "Titre inconnu")}</div>', unsafe_allow_html=True)
-                        
                         col1, col2 = st.columns([3, 1])
                         with col1:
                             st.markdown(f"**Auteurs:** {display_authors(article.get('authors'))}", unsafe_allow_html=True)
                         with col2:
                             if article.get('publication_year'):
                                 st.markdown(f'<span class="year-badge">{article["publication_year"]}</span>', unsafe_allow_html=True)
-                        
                         abstract = article.get('abstract', 'Pas de résumé disponible')
                         if abstract != 'Pas de résumé disponible':
-                            st.write(f"**Résumé:** {abstract[:200]}...")
-                        
-                        if article.get('doi'):
-                            st.write(f"**DOI:** [{article['doi']}](https://doi.org/{article['doi']})")
-                        
+                            st.write(f"**Résumé :** {abstract}")
+                        if article.get('pdf_url'):
+                            st.write(f"**PDF:** [Télécharger le PDF]({article['pdf_url']})")
                         st.markdown('</div>', unsafe_allow_html=True)
                         st.markdown("---")
 
-    # Affichage des statistiques
     stats = db.get_statistics()
     if stats:
         st.markdown("<hr>", unsafe_allow_html=True)
-        st.header("📊 Statistiques générales")
-        
+        st.header("Statistiques générales")
         cols = st.columns(3)
         cols[0].markdown(f"<div class='metric-card'>Articles<br><b>{stats['total_articles']}</b></div>", unsafe_allow_html=True)
         cols[1].markdown(f"<div class='metric-card'>Auteurs<br><b>{stats['total_authors']}</b></div>", unsafe_allow_html=True)
         cols[2].markdown(f"<div class='metric-card'>Années<br><b>{stats['total_years']}</b></div>", unsafe_allow_html=True)
-
         create_visualizations(stats)
-        
-        st.header("☁️ Nuage de mots des titres")
+        st.header("Nuage de mots des titres")
         create_word_cloud(stats.get('titles_text', ''))
 
 if __name__ == "__main__":

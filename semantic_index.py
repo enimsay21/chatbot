@@ -8,7 +8,6 @@ from typing import List, Dict, Any
 from sqlalchemy import create_engine, text
 from sentence_transformers import SentenceTransformer
 
-
 # Charger les variables d'environnement
 load_dotenv()
 
@@ -19,7 +18,7 @@ MYSQL_DB = os.getenv("MYSQL_DATABASE")
 
 # Vérification
 if not all([MYSQL_USER, MYSQL_PASSWORD is not None, MYSQL_HOST, MYSQL_DB]):
-    raise EnvironmentError(" Erreur : variables .env manquantes ou mal définies (MYSQL_USER, MYSQL_PASSWORD, etc.)")
+    raise EnvironmentError("Erreur : variables .env manquantes ou mal définies (MYSQL_USER, MYSQL_PASSWORD, etc.)")
 
 # Connexion SQLAlchemy
 engine = create_engine(f"mysql+pymysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}/{MYSQL_DB}")
@@ -43,16 +42,34 @@ class SemanticSearch:
 
     def _build_index(self):
         logger.info("Récupération des articles depuis la base MySQL...")
+
         with engine.connect() as conn:
             result = conn.execute(text("""
-                SELECT id, title, abstract, publication_year, scopus_identifier, doi, journal_name, pdf_url
-                FROM article
-                WHERE abstract IS NOT NULL AND abstract != ''
+                SELECT 
+                    a.id,
+                    a.title,
+                    a.abstract,
+                    a.publication_year,
+                    a.scopus_identifier,
+                    a.doi,
+                    a.journal_name,
+                    a.pdf_url,
+                    GROUP_CONCAT(au.full_name SEPARATOR ', ') AS authors
+                FROM 
+                    article a
+                LEFT JOIN 
+                    author_article aa ON a.id = aa.article_id
+                LEFT JOIN 
+                    author au ON aa.author_id = au.id
+                WHERE 
+                    a.abstract IS NOT NULL AND a.abstract != ''
+                GROUP BY 
+                    a.id
             """))
             articles = result.fetchall()
 
         if not articles:
-            logger.warning(" Aucun article trouvé.")
+            logger.warning("Aucun article trouvé.")
             return
 
         abstracts = [row.abstract for row in articles]
@@ -65,12 +82,13 @@ class SemanticSearch:
                 "scopus_identifier": row.scopus_identifier,
                 "doi": row.doi,
                 "journal_name": row.journal_name,
-                "pdf_url": row.pdf_url
+                "pdf_url": row.pdf_url,
+                "authors": row.authors  # ✅ On ajoute bien les auteurs !
             }
             for row in articles
         ]
 
-        logger.info(" Encodage des résumés avec le modèle NLP...")
+        logger.info("Encodage des résumés avec le modèle NLP...")
         embeddings = self.model.encode(abstracts, show_progress_bar=True, convert_to_numpy=True).astype("float32")
         dim = embeddings.shape[1]
 
@@ -86,9 +104,9 @@ class SemanticSearch:
 
     def search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         if self.index is None or not self.metadata:
-            raise RuntimeError(" L’index n’est pas initialisé.")
+            raise RuntimeError("L’index n’est pas initialisé.")
 
-        logger.info(f" Requête utilisateur : {query}")
+        logger.info(f"Requête utilisateur : {query}")
         query_vector = self.model.encode([query], convert_to_numpy=True).astype("float32")
         distances, indices = self.index.search(query_vector, top_k)
 
@@ -109,8 +127,10 @@ if __name__ == "__main__":
     query = "deep learning in medicine"
     results = search_engine.search(query, top_k=3)
 
-    print("\n Résultats de la recherche :")
+    print("\nRésultats de la recherche :")
     for res in results:
         print(f"- {res['title']} ({res['publication_year']}) | Score: {res['similarity_score']:.2f}")
+        if res.get("authors"):
+            print(f"   Auteurs : {res['authors']}")
         if res.get("pdf_url"):
-            print(f"   PDF: {res['pdf_url']}")
+            print(f"   PDF : {res['pdf_url']}")

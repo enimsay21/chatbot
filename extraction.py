@@ -4,11 +4,22 @@ import time
 import feedparser
 import requests
 
-# Chemin du dossier de sauvegarde
+# 📁 Dossier de sauvegarde
 DATA_PATH = "data/arxiv_data.json"
 os.makedirs("data", exist_ok=True)
 
-def search_arxiv(query="machine learning", max_results=200):
+# 🔍 Liste des domaines à rechercher
+QUERIES = [
+    "machine learning",
+    "deep learning",
+    "medical imaging",
+    "mathematics",
+    "artificial intelligence",
+    "healthcare",
+    "data science"
+]
+
+def search_arxiv(query, max_results=100):
     articles = []
     base_url = "http://export.arxiv.org/api/query"
     start = 0
@@ -21,16 +32,14 @@ def search_arxiv(query="machine learning", max_results=200):
             "max_results": count_per_page
         }
 
-        print(f" Extraction des résultats {start + 1} à {start + count_per_page}...")
+        print(f"🔎 Extraction : {query} (résultats {start + 1} à {start + count_per_page})")
 
         try:
             response = requests.get(base_url, params=params, timeout=10)
             response.raise_for_status()
-
             feed = feedparser.parse(response.content)
 
             if not feed.entries:
-                print(" Aucun autre résultat, extraction terminée.")
                 break
 
             for entry in feed.entries:
@@ -42,7 +51,7 @@ def search_arxiv(query="machine learning", max_results=200):
                 categories = [tag['term'] for tag in entry.tags] if 'tags' in entry else []
                 article_id = entry.id
 
-                #  Recherche du lien PDF
+                # 📎 Lien PDF
                 pdf_url = None
                 for link in entry.links:
                     if link.type == "application/pdf":
@@ -59,7 +68,7 @@ def search_arxiv(query="machine learning", max_results=200):
                     "keywords": ", ".join(categories),
                     "subject_areas": ", ".join(categories),
                     "authors": authors,
-                    "pdf_url": pdf_url  
+                    "pdf_url": pdf_url
                 }
 
                 articles.append(article)
@@ -68,19 +77,27 @@ def search_arxiv(query="machine learning", max_results=200):
             time.sleep(1)
 
         except Exception as e:
-            print(f" Erreur lors de la récupération des articles : {e}")
+            print(f"❌ Erreur pour '{query}': {e}")
             break
 
     return articles
 
 if __name__ == "__main__":
-    query = "machine learning"
-    max_results = 200
+    all_articles = []
 
-    print(f"Lancement de l'extraction ArXiv pour '{query}'...")
-    extracted_articles = search_arxiv(query, max_results=max_results)
+    for query in QUERIES:
+        extracted = search_arxiv(query, max_results=100)
+        all_articles.extend(extracted)
+
+    # ✅ Supprimer les doublons (par ID arXiv)
+    seen_ids = set()
+    unique_articles = []
+    for art in all_articles:
+        if art["scopus_identifier"] not in seen_ids:
+            unique_articles.append(art)
+            seen_ids.add(art["scopus_identifier"])
 
     with open(DATA_PATH, "w", encoding="utf-8") as f:
-        json.dump(extracted_articles, f, ensure_ascii=False, indent=4)
+        json.dump(unique_articles, f, ensure_ascii=False, indent=4)
 
-    print(f"Extraction terminée : {len(extracted_articles)} articles sauvegardés dans '{DATA_PATH}'.")
+    print(f"\n✅ Total final : {len(unique_articles)} articles enregistrés dans '{DATA_PATH}'")
