@@ -4,11 +4,11 @@ import time
 import feedparser
 import requests
 
-# 📁 Dossier de sauvegarde
+# Dossier de sauvegarde le data
 DATA_PATH = "data/arxiv_data.json"
 os.makedirs("data", exist_ok=True)
 
-# 🔍 Liste des domaines à rechercher
+#  Liste des domaines à rechercher
 QUERIES = [
     "machine learning",
     "deep learning",
@@ -32,7 +32,7 @@ def search_arxiv(query, max_results=100):
             "max_results": count_per_page
         }
 
-        print(f"🔎 Extraction : {query} (résultats {start + 1} à {start + count_per_page})")
+        print(f" Extraction : {query} (résultats {start + 1} à {start + count_per_page})")
 
         try:
             response = requests.get(base_url, params=params, timeout=10)
@@ -51,7 +51,7 @@ def search_arxiv(query, max_results=100):
                 categories = [tag['term'] for tag in entry.tags] if 'tags' in entry else []
                 article_id = entry.id
 
-                # 📎 Lien PDF
+                # Lien PDF
                 pdf_url = None
                 for link in entry.links:
                     if link.type == "application/pdf":
@@ -64,7 +64,7 @@ def search_arxiv(query, max_results=100):
                     "publication_year": publication_year,
                     "journal_name": "ArXiv",
                     "doi": None,
-                    "scopus_identifier": article_id,
+                    "arxiv_identifier": article_id,
                     "keywords": ", ".join(categories),
                     "subject_areas": ", ".join(categories),
                     "authors": authors,
@@ -77,7 +77,7 @@ def search_arxiv(query, max_results=100):
             time.sleep(1)
 
         except Exception as e:
-            print(f"❌ Erreur pour '{query}': {e}")
+            print(f"Erreur pour '{query}': {e}")
             break
 
     return articles
@@ -89,15 +89,15 @@ if __name__ == "__main__":
         extracted = search_arxiv(query, max_results=100)
         all_articles.extend(extracted)
 
-    # ✅ Supprimer les doublons (par ID arXiv)
+    #  Supprimer les doublons (par ID arXiv)
     seen_ids = set()
     unique_articles = []
     for art in all_articles:
-        if art["scopus_identifier"] not in seen_ids:
+        if art["arxiv_identifier"] not in seen_ids:
             unique_articles.append(art)
-            seen_ids.add(art["scopus_identifier"])
+            seen_ids.add(art["arxiv_identifier"])
 
     with open(DATA_PATH, "w", encoding="utf-8") as f:
         json.dump(unique_articles, f, ensure_ascii=False, indent=4)
 
-    print(f"\n✅ Total final : {len(unique_articles)} articles enregistrés dans '{DATA_PATH}'")
+    print(f"\n Total final : {len(unique_articles)} articles enregistrés dans '{DATA_PATH}'")

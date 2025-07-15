@@ -39,11 +39,11 @@ print(f"Total brut : {len(df)} articles")
 
 #  Nettoyage de base
 df.drop_duplicates(subset=['title'], inplace=True)
-df.drop_duplicates(subset=['scopus_identifier'], inplace=True)
+df.drop_duplicates(subset=['arxiv_identifier'], inplace=True)
 df.fillna('', inplace=True)
 
 #  Normalisation texte
-text_cols = ['title', 'abstract', 'journal_name', 'doi', 'scopus_identifier', 'keywords', 'subject_areas', 'pdf_url']
+text_cols = ['title', 'abstract', 'journal_name', 'doi', 'arxiv_identifier', 'keywords', 'subject_areas', 'pdf_url']
 for col in text_cols:
     if col in df.columns:
         df[col] = df[col].astype(str).str.strip()
@@ -55,7 +55,7 @@ for _, row in df.iterrows():
     abstract = row['abstract']
     journal_name = row.get('journal_name', 'ArXiv')
     doi = row.get('doi', None)
-    scopus_id = row['scopus_identifier']
+    arxiv_id = row['arxiv_identifier']
     keywords = row.get('keywords', '')
     subject_areas = row.get('subject_areas', '')
     pdf_url = row.get('pdf_url', '')
@@ -65,16 +65,16 @@ for _, row in df.iterrows():
     except:
         publication_year = None
 
-    if not title or not scopus_id:
+    if not title or not arxiv_id:
         continue
 
     #  Insertion dans la table article
     try:
         cursor.execute("""
             INSERT IGNORE INTO article
-            (title, abstract, publication_year, journal_name, doi, scopus_identifier, keywords, subject_areas, pdf_url)
+            (title, abstract, publication_year, journal_name, doi, arxiv_identifier, keywords, subject_areas, pdf_url)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (title, abstract, publication_year, journal_name, doi, scopus_id, keywords, subject_areas, pdf_url))
+        """, (title, abstract, publication_year, journal_name, doi, arxiv_id, keywords, subject_areas, pdf_url))
         db.commit()
         nb_articles += cursor.rowcount
     except Exception as e:
@@ -82,7 +82,7 @@ for _, row in df.iterrows():
         continue
 
     # Récupérer l'ID article
-    cursor.execute("SELECT id FROM article WHERE scopus_identifier = %s", (scopus_id,))
+    cursor.execute("SELECT id FROM article WHERE arxiv_identifier = %s", (arxiv_id,))
     result = cursor.fetchone()
     article_id = result[0] if result else None
     if not article_id:
@@ -102,7 +102,7 @@ for _, row in df.iterrows():
     for author_name in clean_authors:
         try:
             cursor.execute("""
-                INSERT IGNORE INTO author (full_name, scopus_author_id, orcid, main_affiliation_id)
+                INSERT IGNORE INTO author (full_name, arxiv_author_id, orcid, main_affiliation_id)
                 VALUES (%s, %s, %s, NULL)
             """, (author_name, None, None))
             db.commit()

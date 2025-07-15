@@ -83,7 +83,7 @@ class SemanticSearch:
                 "doi": row.doi,
                 "journal_name": row.journal_name,
                 "pdf_url": row.pdf_url,
-                "authors": row.authors  # ✅ On ajoute bien les auteurs !
+                "authors": row.authors  
             }
             for row in articles
         ]
@@ -100,7 +100,7 @@ class SemanticSearch:
         with open("models/metadata.pkl", "wb") as f:
             pickle.dump(self.metadata, f)
 
-        logger.info(f"✅ Index FAISS créé avec {len(self.metadata)} articles.")
+        logger.info(f" Index FAISS créé avec {len(self.metadata)} articles.")
 
     def search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         if self.index is None or not self.metadata:

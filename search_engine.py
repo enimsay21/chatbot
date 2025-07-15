@@ -1,10 +1,9 @@
 import faiss
-import numpy as np
 import pandas as pd
 from sentence_transformers import SentenceTransformer
 
 class ScopusSearchEngine:
-    def __init__(self, index_path='models/scopus_abstracts.index', metadata_path='models/metadata.pkl'):
+    def __init__(self, index_path='models/arxiv_abstracts.index', metadata_path='models/metadata.pkl'):
         # Charger l'index FAISS
         self.index = faiss.read_index(index_path)
 
@@ -36,10 +35,10 @@ class ScopusSearchEngine:
                 result = {
                     "title": row.get("title", "Titre inconnu"),
                     "abstract": row.get("abstract", "Résumé indisponible"),
-                    "authors": row.get("authors", "Auteurs inconnus"),  # ✅ Corrigé ici
+                    "authors": row.get("authors", "Auteurs inconnus"),  
                     "publication_year": row.get("publication_year", "Année inconnue"),
                     "pdf_url": row.get("pdf_url", None),
-                    "similarity_score": max(0, 1 - (distance / 4))  # ✅ Normalisation plus douce
+                    "similarity_score": max(0, 1 - (distance / 4))  
                 }
 
                 results.append(result)
