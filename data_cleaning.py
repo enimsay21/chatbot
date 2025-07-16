@@ -37,7 +37,7 @@ df = pd.DataFrame(raw_data)
 
 print(f"Total brut : {len(df)} articles")
 
-#  Nettoyage de base
+#  Nettoyage doublons
 df.drop_duplicates(subset=['title'], inplace=True)
 df.drop_duplicates(subset=['arxiv_identifier'], inplace=True)
 df.fillna('', inplace=True)

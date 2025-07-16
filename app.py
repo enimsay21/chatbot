@@ -6,7 +6,16 @@ from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 import re
 from chatbot import ScopusChatbot
+import re
 
+def detect_years_from_text(text):
+    years = re.findall(r'\b(19[5-9]\d|20[0-4]\d|2050)\b', text)
+    years = [int(y) for y in years]
+    if len(years) >= 2:
+        return min(years), max(years)
+    elif len(years) == 1:
+        return years[0], years[0]
+    return None, None
 # Style CSS personnalisé
 st.markdown("""
 <style>
@@ -252,6 +261,13 @@ def main():
         st.session_state.messages = []
     if 'filters' not in st.session_state:
         st.session_state.filters = {'year_from': 2000, 'year_to': 2025, 'authors': []}
+    if 'last_question' not in st.session_state:
+        st.session_state.last_question = ''
+    if 'shown_results' not in st.session_state:
+         st.session_state.shown_results = {}
+    s
+
+
 
     st.markdown("""
     <div class="main-header">
@@ -263,13 +279,9 @@ def main():
     with st.sidebar:
         st.header("Filtres")
         years = db.get_years_range()
-        year_from, year_to = st.slider(
-            "Période de publication",
-            min_value=years[0],
-            max_value=years[1],
-            value=(years[0], years[1]),
-            key='year_filter'
-        )
+        year_from = st.number_input("Année minimale", min_value=years[0], max_value=years[1], value=years[0], step=1)
+        year_to = st.number_input("Année maximale", min_value=years[0], max_value=years[1], value=years[1], step=1)
+
         authors_list = db.get_authors_list()
         selected_authors = st.multiselect(
             "Sélectionner des auteurs",
@@ -289,15 +301,28 @@ def main():
     chat_container = st.container()
     with st.form(key='chat_form'):
         user_input = st.text_area("Posez votre question ici :", height=100, key="input")
-        submitted = st.form_submit_button("Rechercher")
+        
+        submitted = st.form_submit_button("Envoyer")
 
     if submitted and user_input:
+        year_from_detected, year_to_detected = detect_years_from_text(user_input)
+        if year_from_detected and year_to_detected:
+            st.session_state.filters['year_from'] = year_from_detected
+            st.session_state.filters['year_to'] = year_to_detected
         st.session_state.messages.append({"role": "user", "content": user_input})
         
         with st.spinner("Recherche en cours..."):
-            raw_results = st.session_state.scopus_chatbot.search_engine.search(user_input, k=50)
+            raw_results = sorted(
+            st.session_state.scopus_chatbot.search_engine.search(user_input, k=100),
+            key=lambda x: x.get('publication_year', 0),
+            reverse=True)
+            already_shown = st.session_state.shown_results.get(user_input, [])
+            new_results = [article for article in raw_results if article not in already_shown]
+            if not new_results:
+                new_results = raw_results
+                st.session_state.shown_results[user_input] = []
             filtered_results = []
-            for article in raw_results:
+            for article in new_results:
                 year_ok = True
                 pub_year = article.get('publication_year')
                 if pub_year and str(pub_year).isdigit():
@@ -311,6 +336,10 @@ def main():
                     authors_ok = any(author in authors for author in st.session_state.filters['authors'])
                 if year_ok and authors_ok:
                     filtered_results.append(article)
+                if len(filtered_results) >= 2:
+                    break
+            st.session_state.shown_results.setdefault(user_input, []).extend(filtered_results)
+
 
             if filtered_results:
                 st.session_state.messages.append({"role": "assistant", "content": ""})
@@ -324,7 +353,7 @@ def main():
             else:
                 st.markdown(f'<div class="bot-message">{msg["content"]}</div>', unsafe_allow_html=True)
                 if (msg == st.session_state.messages[-1] and 
-                    'raw_results' in locals()):
+                    'filtered_results' in locals()):
                     for article in filtered_results[:2]:
                         st.markdown('<div class="article-card">', unsafe_allow_html=True)
                         st.markdown(f'<div class="article-title">{article.get("title", "Titre inconnu")}</div>', unsafe_allow_html=True)
@@ -343,6 +372,7 @@ def main():
                         st.markdown("---")
 
     stats = db.get_statistics()
+    
     if stats:
         st.markdown("<hr>", unsafe_allow_html=True)
         st.header("Statistiques générales")
@@ -353,6 +383,48 @@ def main():
         create_visualizations(stats)
         st.header("Nuage de mots des titres")
         create_word_cloud(stats.get('titles_text', ''))
+    # Ajout : Zone de recherche avancée avec filtres
+    with st.sidebar:
+        st.markdown("<hr>", unsafe_allow_html=True)
+    st.subheader(" Recherche avancée")
+    advanced_query = st.text_input("Rechercher un mot-clé ou un titre :", key="advanced_query")
+    if st.button("Rechercher"):
+        if not advanced_query.strip():
+            st.warning("Veuillez entrer un mot-clé pour la recherche avancée.")
+        else:
+            chatbot = ScopusChatbot()
+            results = chatbot.search_engine.search(advanced_query, k=50)
+
+            filtered_advanced_results = []
+            for article in results:
+                year_ok = True
+                pub_year = article.get('publication_year')
+                if pub_year and str(pub_year).isdigit():
+                    pub_year = int(pub_year)
+                    year_ok = st.session_state.filters['year_from'] <= pub_year <= st.session_state.filters['year_to']
+                authors_ok = True
+                if st.session_state.filters['authors']:
+                    authors = article.get('authors', [])
+                    if isinstance(authors, str):
+                        authors = [a.strip() for a in authors.split(',')]
+                    authors_ok = any(author in authors for author in st.session_state.filters['authors'])
+                if year_ok and authors_ok:
+                    filtered_advanced_results.append(article)
+
+            st.markdown("## Résultats de la recherche avancée")
+            if filtered_advanced_results:
+                for article in filtered_advanced_results[:5]:
+                    st.markdown('<div class="article-card">', unsafe_allow_html=True)
+                    st.markdown(f'<div class="article-title">{article.get("title", "Titre inconnu")}</div>', unsafe_allow_html=True)
+                    st.markdown(f"**Auteurs:** {article.get('authors', 'Auteurs inconnus')}")
+                    st.markdown(f"**Année:** {article.get('publication_year', 'Année inconnue')}")
+                    st.markdown(f"**Résumé:** {article.get('abstract', 'Pas de résumé disponible')}")
+                    if article.get("pdf_url"):
+                        st.markdown(f"[📄 PDF]({article['pdf_url']})")
+                    st.markdown('</div>', unsafe_allow_html=True)
+            else:
+                st.info("Aucun article trouvé avec les critères spécifiés.")
+        
 
 if __name__ == "__main__":
     main()

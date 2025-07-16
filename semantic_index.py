@@ -50,7 +50,7 @@ class SemanticSearch:
                     a.title,
                     a.abstract,
                     a.publication_year,
-                    a.scopus_identifier,
+                    a.arxiv_identifier,
                     a.doi,
                     a.journal_name,
                     a.pdf_url,
@@ -79,7 +79,7 @@ class SemanticSearch:
                 "title": row.title,
                 "abstract": row.abstract,
                 "publication_year": row.publication_year,
-                "scopus_identifier": row.scopus_identifier,
+                "arxiv_identifier": row.arxiv_identifier,
                 "doi": row.doi,
                 "journal_name": row.journal_name,
                 "pdf_url": row.pdf_url,
@@ -90,13 +90,13 @@ class SemanticSearch:
 
         logger.info("Encodage des résumés avec le modèle NLP...")
         embeddings = self.model.encode(abstracts, show_progress_bar=True, convert_to_numpy=True).astype("float32")
-        dim = embeddings.shape[1]
 
+        dim = embeddings.shape[1]
         self.index = faiss.IndexFlatL2(dim)
         self.index.add(embeddings)
 
         # Sauvegarde
-        faiss.write_index(self.index, "models/scopus_abstracts.index")
+        faiss.write_index(self.index, "models/arxiv_abstracts.index")
         with open("models/metadata.pkl", "wb") as f:
             pickle.dump(self.metadata, f)
 
@@ -107,6 +107,8 @@ class SemanticSearch:
             raise RuntimeError("L’index n’est pas initialisé.")
 
         logger.info(f"Requête utilisateur : {query}")
+
+        
         query_vector = self.model.encode([query], convert_to_numpy=True).astype("float32")
         distances, indices = self.index.search(query_vector, top_k)
 
@@ -115,7 +117,7 @@ class SemanticSearch:
             if idx >= len(self.metadata):
                 continue
             article = self.metadata[idx].copy()
-            article["similarity_score"] = max(0, 1 - (distance / 4))  # Normalisation possible
+            article["similarity_score"] = max(0, 1 - (distance / 4))  
             results.append(article)
 
         return sorted(results, key=lambda x: x["similarity_score"], reverse=True)
