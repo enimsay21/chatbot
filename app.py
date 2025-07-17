@@ -16,6 +16,7 @@ def detect_years_from_text(text):
     elif len(years) == 1:
         return years[0], years[0]
     return None, None
+
 # Style CSS personnalisé
 st.markdown("""
 <style>
@@ -86,6 +87,14 @@ st.markdown("""
         margin-bottom: 1rem;
         border: 1px solid #e9ecef;
     }
+    .page-title {
+        background: linear-gradient(135deg, #00CED1 0%, #87CEEB 100%);
+        padding: 1rem;
+        border-radius: 10px;
+        margin-bottom: 1rem;
+        text-align: center;
+        color: white;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -130,7 +139,7 @@ class ChatbotDatabase:
                 WHERE publication_year IS NOT NULL 
                 GROUP BY publication_year 
                 ORDER BY publication_year DESC 
-                LIMIT 15
+                
             """)
             stats['articles_by_year'] = cursor.fetchall()
             
@@ -140,7 +149,7 @@ class ChatbotDatabase:
                 JOIN author_article aa ON au.id = aa.author_id
                 GROUP BY au.id, au.full_name
                 ORDER BY count DESC 
-                LIMIT 10
+               
             """)
             stats['top_authors'] = cursor.fetchall()
             
@@ -245,63 +254,25 @@ def create_word_cloud(text):
 def create_visualizations(stats):
     if stats.get('articles_by_year'):
         df_years = pd.DataFrame(stats['articles_by_year'])
-        fig_years = px.bar(df_years, x='publication_year', y='count', title=' Articles par Année', color='count')
+        fig_years = px.bar(df_years, x='publication_year', y='count', title='Nombre d\'articles par année', color='count')
         st.plotly_chart(fig_years, use_container_width=True)
     
     if stats.get('top_authors'):
-        df_authors = pd.DataFrame(stats['top_authors'][:8])
-        fig_authors = px.pie(df_authors, values='count', names='full_name', title=' Top Auteurs')
+        df_authors = pd.DataFrame(stats['top_authors'][:9])
+        fig_authors = px.pie(df_authors, values='count', names='full_name', title='Top Auteurs')
         st.plotly_chart(fig_authors, use_container_width=True)
 
-def main():
-    db = init_database()
-    if 'scopus_chatbot' not in st.session_state:
-        st.session_state.scopus_chatbot = ScopusChatbot()
-    if 'messages' not in st.session_state:
-        st.session_state.messages = []
-    if 'filters' not in st.session_state:
-        st.session_state.filters = {'year_from': 2000, 'year_to': 2025, 'authors': []}
-    if 'last_question' not in st.session_state:
-        st.session_state.last_question = ''
-    if 'shown_results' not in st.session_state:
-         st.session_state.shown_results = {}
-    s
-
-
-
+def page_chatbot():
     st.markdown("""
-    <div class="main-header">
-        <h1>🔬 Chatbot Scientifique</h1>
+    <div class="page-title">
+        <h1>🤖 Chatbot Scientifique</h1>
         <p>Posez vos questions sur les articles scientifiques</p>
     </div>
     """, unsafe_allow_html=True)
-
-    with st.sidebar:
-        st.header("Filtres")
-        years = db.get_years_range()
-        year_from = st.number_input("Année minimale", min_value=years[0], max_value=years[1], value=years[0], step=1)
-        year_to = st.number_input("Année maximale", min_value=years[0], max_value=years[1], value=years[1], step=1)
-
-        authors_list = db.get_authors_list()
-        selected_authors = st.multiselect(
-            "Sélectionner des auteurs",
-            options=authors_list,
-            key='author_filter'
-        )
-        if (year_from != st.session_state.filters['year_from'] or 
-            year_to != st.session_state.filters['year_to'] or 
-            selected_authors != st.session_state.filters['authors']):
-            st.session_state.filters = {
-                'year_from': year_from,
-                'year_to': year_to,
-                'authors': selected_authors
-            }
-            st.rerun()
-
+    
     chat_container = st.container()
     with st.form(key='chat_form'):
         user_input = st.text_area("Posez votre question ici :", height=100, key="input")
-        
         submitted = st.form_submit_button("Envoyer")
 
     if submitted and user_input:
@@ -340,7 +311,6 @@ def main():
                     break
             st.session_state.shown_results.setdefault(user_input, []).extend(filtered_results)
 
-
             if filtered_results:
                 st.session_state.messages.append({"role": "assistant", "content": ""})
             else:
@@ -371,60 +341,164 @@ def main():
                         st.markdown('</div>', unsafe_allow_html=True)
                         st.markdown("---")
 
+def page_statistiques():
+    st.markdown("""
+    <div class="page-title">
+        <h1>📈 Statistiques</h1>
+        <p>Analyse des données scientifiques</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    db = init_database()
     stats = db.get_statistics()
     
     if stats:
-        st.markdown("<hr>", unsafe_allow_html=True)
-        st.header("Statistiques générales")
+        # Métriques principales
         cols = st.columns(3)
         cols[0].markdown(f"<div class='metric-card'>Articles<br><b>{stats['total_articles']}</b></div>", unsafe_allow_html=True)
         cols[1].markdown(f"<div class='metric-card'>Auteurs<br><b>{stats['total_authors']}</b></div>", unsafe_allow_html=True)
         cols[2].markdown(f"<div class='metric-card'>Années<br><b>{stats['total_years']}</b></div>", unsafe_allow_html=True)
+        
+        # Graphiques
+        st.header(" Visualisations")
         create_visualizations(stats)
-        st.header("Nuage de mots des titres")
+        
+        # Nuage de mots
+        st.header("☁️ Nuage de mots des titres")
         create_word_cloud(stats.get('titles_text', ''))
-    # Ajout : Zone de recherche avancée avec filtres
-    with st.sidebar:
-        st.markdown("<hr>", unsafe_allow_html=True)
-    st.subheader(" Recherche avancée")
-    advanced_query = st.text_input("Rechercher un mot-clé ou un titre :", key="advanced_query")
-    if st.button("Rechercher"):
+    else:
+        st.error("Impossible de charger les statistiques")
+
+def page_recherche_avancee():
+    st.markdown("""
+    <div class="page-title">
+        <h1>🔍 Recherche Avancée</h1>
+        <p>Recherche détaillée avec filtres</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    db = init_database()
+    
+    # Section des filtres
+    st.header(" Filtres")
+    with st.container():
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            years = db.get_years_range()
+            year_from = st.number_input("Année minimale", min_value=years[0], max_value=years[1], value=years[0], step=1)
+            year_to = st.number_input("Année maximale", min_value=years[0], max_value=years[1], value=years[1], step=1)
+        
+        with col2:
+            authors_list = db.get_authors_list()
+            selected_authors = st.multiselect(
+                "Sélectionner des auteurs",
+                options=authors_list,
+                key='advanced_author_filter'
+            )
+    
+    # Section de recherche
+    st.header("🔎 Recherche")
+    advanced_query = st.text_input("Rechercher un article :", key="advanced_query")
+    
+    if st.button("Rechercher", type="primary"):
         if not advanced_query.strip():
             st.warning("Veuillez entrer un mot-clé pour la recherche avancée.")
         else:
-            chatbot = ScopusChatbot()
-            results = chatbot.search_engine.search(advanced_query, k=50)
+            with st.spinner("Recherche en cours..."):
+                chatbot = ScopusChatbot()
+                results = chatbot.search_engine.search(advanced_query, k=50)
 
-            filtered_advanced_results = []
-            for article in results:
-                year_ok = True
-                pub_year = article.get('publication_year')
-                if pub_year and str(pub_year).isdigit():
-                    pub_year = int(pub_year)
-                    year_ok = st.session_state.filters['year_from'] <= pub_year <= st.session_state.filters['year_to']
-                authors_ok = True
-                if st.session_state.filters['authors']:
-                    authors = article.get('authors', [])
-                    if isinstance(authors, str):
-                        authors = [a.strip() for a in authors.split(',')]
-                    authors_ok = any(author in authors for author in st.session_state.filters['authors'])
-                if year_ok and authors_ok:
-                    filtered_advanced_results.append(article)
+                filtered_advanced_results = []
+                for article in results:
+                    year_ok = True
+                    pub_year = article.get('publication_year')
+                    if pub_year and str(pub_year).isdigit():
+                        pub_year = int(pub_year)
+                        year_ok = year_from <= pub_year <= year_to
+                    authors_ok = True
+                    if selected_authors:
+                        authors = article.get('authors', [])
+                        if isinstance(authors, str):
+                            authors = [a.strip() for a in authors.split(',')]
+                        authors_ok = any(author in authors for author in selected_authors)
+                    if year_ok and authors_ok:
+                        filtered_advanced_results.append(article)
 
-            st.markdown("## Résultats de la recherche avancée")
-            if filtered_advanced_results:
-                for article in filtered_advanced_results[:5]:
-                    st.markdown('<div class="article-card">', unsafe_allow_html=True)
-                    st.markdown(f'<div class="article-title">{article.get("title", "Titre inconnu")}</div>', unsafe_allow_html=True)
-                    st.markdown(f"**Auteurs:** {article.get('authors', 'Auteurs inconnus')}")
-                    st.markdown(f"**Année:** {article.get('publication_year', 'Année inconnue')}")
-                    st.markdown(f"**Résumé:** {article.get('abstract', 'Pas de résumé disponible')}")
-                    if article.get("pdf_url"):
-                        st.markdown(f"[📄 PDF]({article['pdf_url']})")
-                    st.markdown('</div>', unsafe_allow_html=True)
-            else:
-                st.info("Aucun article trouvé avec les critères spécifiés.")
+                st.subheader(f"📋 Résultats ({len(filtered_advanced_results)} )")
+                if filtered_advanced_results:
+                    for article in filtered_advanced_results:
+                        st.markdown('<div class="article-card">', unsafe_allow_html=True)
+                        st.markdown(f'<div class="article-title">{article.get("title", "Titre inconnu")}</div>', unsafe_allow_html=True)
+                        
+                        col1, col2 = st.columns([3, 1])
+                        with col1:
+                            st.markdown(f"**Auteurs:** {display_authors(article.get('authors'))}", unsafe_allow_html=True)
+                        with col2:
+                            if article.get('publication_year'):
+                                st.markdown(f'<span class="year-badge">{article["publication_year"]}</span>', unsafe_allow_html=True)
+                        
+                        abstract = article.get('abstract', 'Pas de résumé disponible')
+                        if abstract != 'Pas de résumé disponible':
+                            st.write(f"**Résumé :** {abstract}")
+                        if article.get('pdf_url'):
+                            st.write(f"**PDF:** [Télécharger le PDF]({article['pdf_url']})")
+                        st.markdown('</div>', unsafe_allow_html=True)
+                        st.markdown("---")
+                else:
+                    st.info("Aucun article trouvé avec les critères spécifiés.")
+
+def main():
+    # Configuration de la page
+    st.set_page_config(
+        page_title="Chatbot Scientifique",
+        page_icon="🔬",
+        layout="wide"
+    )
+    
+    # Initialisation des variables de session
+    db = init_database()
+    if 'scopus_chatbot' not in st.session_state:
+        st.session_state.scopus_chatbot = ScopusChatbot()
+    if 'messages' not in st.session_state:
+        st.session_state.messages = []
+    if 'filters' not in st.session_state:
+        st.session_state.filters = {'year_from': 2000, 'year_to': 2025, 'authors': []}
+    if 'last_question' not in st.session_state:
+        st.session_state.last_question = ''
+    if 'shown_results' not in st.session_state:
+        st.session_state.shown_results = {}
+    if 'current_page' not in st.session_state:
+        st.session_state.current_page = "Chatbot"
+
+    # Sidebar avec navigation
+    with st.sidebar:
+        st.markdown("""
+        <div style="text-align: center;  padding: 2rem; background: linear-gradient(135deg, #00CED1 0%, #87CEEB 200%); border-radius: 10px; margin-bottom: 2rem;">
+            <h2 style="color: white; margin: 0;font-weight: bold;">Chatbot Scientifique</h2>
+        </div>
+        """, unsafe_allow_html=True)
         
+        # Boutons de navigation
+        if st.button("🏠   Chatbot", use_container_width=True):
+            st.session_state.current_page = "Chatbot"
+        
+        if st.button("📊   Statistiques", use_container_width=True):
+            st.session_state.current_page = "Statistiques"
+        
+        if st.button("🔍 Recherche", use_container_width=True):
+            st.session_state.current_page = "Recherche Avancée"
+        
+        st.markdown("---")
+
+
+    # Affichage de la page sélectionnée
+    if st.session_state.current_page == "Chatbot":
+        page_chatbot()
+    elif st.session_state.current_page == "Statistiques":
+        page_statistiques()
+    elif st.session_state.current_page == "Recherche Avancée":
+        page_recherche_avancee()
 
 if __name__ == "__main__":
     main()
