@@ -6,7 +6,16 @@ from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 import re
 from chatbot import ScopusChatbot
-import re
+import os
+from dotenv import load_dotenv
+# Charger le fichier .env
+load_dotenv()
+
+MYSQL_HOST = os.getenv("MYSQL_HOST")
+MYSQL_USER = os.getenv("MYSQL_USER")
+MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD")
+MYSQL_DB = os.getenv("MYSQL_DATABASE")
+
 
 def detect_years_from_text(text):
     years = re.findall(r'\b(19[5-9]\d|20[0-4]\d|2050)\b', text)
@@ -101,10 +110,10 @@ st.markdown("""
 class ChatbotDatabase:
     def __init__(self):
         self.db_config = {
-            'host': 'localhost',
-            'user': 'root',
-            'password': '',
-            'database': 'chatbot_test'
+            'host': MYSQL_HOST,
+            'user': MYSQL_USER,
+            'password': MYSQL_PASSWORD,
+            'database': MYSQL_DB
         }
     
     def get_connection(self):
@@ -360,7 +369,7 @@ def page_statistiques():
         cols[2].markdown(f"<div class='metric-card'>Années<br><b>{stats['total_years']}</b></div>", unsafe_allow_html=True)
         
         # Graphiques
-        st.header(" Visualisations")
+        st.header(" Nom")
         create_visualizations(stats)
         
         # Nuage de mots
