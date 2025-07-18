@@ -22,7 +22,7 @@ pip install -r requirements.txt
 ->Manipulation de données :
 pip install pandas numpy
 ->Traitement du langage naturel (NLP) :
-pip install nltk spacy transformers sentence-transformers
+pip install transformers sentence-transformers
 ->Recherche vectorielle (semantic search) :
 pip install faiss-cpu
 ->Visualisation de données :
@@ -34,10 +34,29 @@ pip install streamlit
 En interface Web avec Streamlit
 ->streamlit run app/streamlit_app.py
 
-..**Comment utliser le chatbot par utlisateur**
+**Comment utliser le chatbot (interfaces utilisateurs)**
+1. Interface de question-réponse (Q&A)
+- Permet à l’utilisateur de poser une question libre au chatbot.
+- Le chatbot renvoie une réponse structurée avec :
+Titre de l'article le plus pertinent
+Résumé synthétique
+Auteur(s) de la publication
 
+2. Interface de visualisation de données
+Affiche des graphiques interactifs (via Plotly/Seaborn) :
+- Les articles les plus recherchés
+- Les auteurs les plus publiants
+- La répartition des publications par année
 
+Ces diagrammes permettent de comprendre rapidement les tendances scientifiques dans la base analysée.
 
+3. Interface de recherche sémantique avec filtres
+    L’utilisateur peut effectuer une recherche rapide par mot-clé ou question.
+    Résultats obtenus grâce à un moteur de recherche sémantique (FAISS + embeddings).
+    Possibilité d’appliquer des filtres dynamiques :
+      - Par année de publication
+      - Par nom d’auteur
+      - Par mots-clés
 **Contributeurs**
 CHAHMI Nouhaila, FKIKIH Yasmine :Développeurs principaux
 MADANI Abdellah:Encadrant
