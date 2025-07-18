@@ -369,7 +369,7 @@ def page_statistiques():
         cols[2].markdown(f"<div class='metric-card'>Années<br><b>{stats['total_years']}</b></div>", unsafe_allow_html=True)
         
         # Graphiques
-        st.header(" Nom")
+        st.header(" Visualisations")
         create_visualizations(stats)
         
         # Nuage de mots
