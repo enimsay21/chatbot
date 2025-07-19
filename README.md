@@ -1,14 +1,12 @@
 **Chatbot de Recherche Scientifique**
 Ce projet propose un chatbot intelligent permettant de faciliter la recherche d’articles scientifiques grâce aux technologies NLP, FAISS. Il intègre une interface simple  pour interagir naturellement avec une base de données scientifique.
 
-
-
 **Fonctionnalités**
 - Recherche d’articles via une question ou mot-clé
 - Résumés automatiques d’articles (via NLP)
-- Base ArXiv intégrée (fichier local ou API)
+- Base ArXiv intégrée 
 - Réponses contextualisées avec embeddings (FAISS)
-- Interface utilisateur (Streamlit ou Flask)
+- Interface utilisateur (Streamlit )
 - Visualisation interactive (Plotly)
 
 **Installation**
@@ -32,7 +30,7 @@ pip install streamlit
 
 **Lancement**
 En interface Web avec Streamlit
-->streamlit run app/streamlit_app.py
+->streamlit run app.py
 
 **Comment utliser le chatbot (interfaces utilisateurs)**
 1. Interface de question-réponse (Q&A)
@@ -41,17 +39,19 @@ En interface Web avec Streamlit
 Titre de l'article le plus pertinent
 Résumé synthétique
 Auteur(s) de la publication
+Le lien pdf d'article
+L'année de publication
 
 2. Interface de visualisation de données
-Affiche des graphiques interactifs (via Plotly/Seaborn) :
-- Les articles les plus recherchés
+Affiche des graphiques interactifs via Plotly :
+- le nuage de mots 
 - Les auteurs les plus publiants
 - La répartition des publications par année
 
 Ces diagrammes permettent de comprendre rapidement les tendances scientifiques dans la base analysée.
 
 3. Interface de recherche sémantique avec filtres
-    L’utilisateur peut effectuer une recherche rapide par mot-clé ou question.
+    L’utilisateur peut effectuer une recherche rapide par mot-clé.
     Résultats obtenus grâce à un moteur de recherche sémantique (FAISS + embeddings).
     Possibilité d’appliquer des filtres dynamiques :
       - Par année de publication
