@@ -1,7 +1,5 @@
 from search_engine import ScopusSearchEngine
 
-
-
 class ScopusChatbot:
     def __init__(self):
         self.search_engine = ScopusSearchEngine()
@@ -10,6 +8,7 @@ class ScopusChatbot:
         if not query.strip():
             return "Veuillez saisir une question valide."
 
+        # Appel avec le seuil de similarité explicite
         results = self.search_engine.search(query, k=5)
 
         if not results:
@@ -27,4 +26,5 @@ class ScopusChatbot:
             if article.get("pdf_url"):
                 response += f"🔗 PDF: {article['pdf_url']}\n"
             response += "\n"
+
         return response

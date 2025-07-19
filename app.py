@@ -47,7 +47,15 @@ st.markdown("""
         margin-left: 20%;
         box-shadow: 0 2px 10px rgba(0, 206, 209, 0.3);
     }
-   
+   .bot-message {
+        background: linear-gradient(135deg, #f0f0f0 0%, #e0e0e0 100%);
+        color: #333;
+        padding: 1rem 1.5rem;
+        border-radius: 18px 18px 18px 5px;
+        margin: 1rem 0;
+        margin-right: 20%;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
     .article-card {
         background: white;
         padding: 1.5rem;
@@ -271,6 +279,24 @@ def create_visualizations(stats):
         fig_authors = px.pie(df_authors, values='count', names='full_name', title='Top Auteurs')
         st.plotly_chart(fig_authors, use_container_width=True)
 
+def display_article(article):
+    """Fonction pour afficher un article de manière cohérente"""
+    st.markdown('<div class="article-card">', unsafe_allow_html=True)
+    st.markdown(f'<div class="article-title">{article.get("title", "Titre inconnu")}</div>', unsafe_allow_html=True)
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.markdown(f"**Auteurs:** {display_authors(article.get('authors'))}", unsafe_allow_html=True)
+    with col2:
+        if article.get('publication_year'):
+            st.markdown(f'<span class="year-badge">{article["publication_year"]}</span>', unsafe_allow_html=True)
+    abstract = article.get('abstract', 'Pas de résumé disponible')
+    if abstract != 'Pas de résumé disponible':
+        st.write(f"**Résumé :** {abstract}")
+    if article.get('pdf_url'):
+        st.write(f"**PDF:** [Télécharger le PDF]({article['pdf_url']})")
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("---")
+
 def page_chatbot():
     st.markdown("""
     <div class="page-title">
@@ -289,18 +315,23 @@ def page_chatbot():
         if year_from_detected and year_to_detected:
             st.session_state.filters['year_from'] = year_from_detected
             st.session_state.filters['year_to'] = year_to_detected
+        
+        # Ajouter la question de l'utilisateur
         st.session_state.messages.append({"role": "user", "content": user_input})
         
         with st.spinner("Recherche en cours..."):
             raw_results = sorted(
-            st.session_state.scopus_chatbot.search_engine.search(user_input, k=100),
-            key=lambda x: x.get('publication_year', 0),
-            reverse=True)
+                st.session_state.scopus_chatbot.search_engine.search(user_input, k=100),
+                key=lambda x: x.get('publication_year', 0),
+                reverse=True
+            )
+            
             already_shown = st.session_state.shown_results.get(user_input, [])
             new_results = [article for article in raw_results if article not in already_shown]
             if not new_results:
                 new_results = raw_results
                 st.session_state.shown_results[user_input] = []
+            
             filtered_results = []
             for article in new_results:
                 year_ok = True
@@ -308,47 +339,47 @@ def page_chatbot():
                 if pub_year and str(pub_year).isdigit():
                     pub_year = int(pub_year)
                     year_ok = st.session_state.filters['year_from'] <= pub_year <= st.session_state.filters['year_to']
+                
                 authors_ok = True
                 if st.session_state.filters['authors']:
                     authors = article.get('authors', [])
                     if isinstance(authors, str):
                         authors = [a.strip() for a in authors.split(',')]
                     authors_ok = any(author in authors for author in st.session_state.filters['authors'])
+                
                 if year_ok and authors_ok:
                     filtered_results.append(article)
                 if len(filtered_results) >= 2:
                     break
+            
             st.session_state.shown_results.setdefault(user_input, []).extend(filtered_results)
 
+            # Ajouter la réponse avec les articles associés
             if filtered_results:
-                st.session_state.messages.append({"role": "assistant", "content": ""})
+                st.session_state.messages.append({
+                    "role": "assistant", 
+                    "content": "",
+                    "articles": filtered_results[:1]  # Stocker les articles dans le message
+                })
             else:
-                st.session_state.messages.append({"role": "assistant", "content": " Aucun résultat trouvé avec ces filtres"})
+                st.session_state.messages.append({
+                    "role": "assistant", 
+                    "content": "Désolé Aucun résultat trouvé",
+                    "articles": []
+                })
 
+    # Affichage des messages avec leurs articles
     with chat_container:
-        for msg in st.session_state.messages:
+        for i, msg in enumerate(st.session_state.messages):
             if msg["role"] == "user":
                 st.markdown(f'<div class="user-message">{msg["content"]}</div>', unsafe_allow_html=True)
             else:
                 st.markdown(f'<div class="bot-message">{msg["content"]}</div>', unsafe_allow_html=True)
-                if (msg == st.session_state.messages[-1] and 
-                    'filtered_results' in locals()):
-                    for article in filtered_results[:2]:
-                        st.markdown('<div class="article-card">', unsafe_allow_html=True)
-                        st.markdown(f'<div class="article-title">{article.get("title", "Titre inconnu")}</div>', unsafe_allow_html=True)
-                        col1, col2 = st.columns([3, 1])
-                        with col1:
-                            st.markdown(f"**Auteurs:** {display_authors(article.get('authors'))}", unsafe_allow_html=True)
-                        with col2:
-                            if article.get('publication_year'):
-                                st.markdown(f'<span class="year-badge">{article["publication_year"]}</span>', unsafe_allow_html=True)
-                        abstract = article.get('abstract', 'Pas de résumé disponible')
-                        if abstract != 'Pas de résumé disponible':
-                            st.write(f"**Résumé :** {abstract}")
-                        if article.get('pdf_url'):
-                            st.write(f"**PDF:** [Télécharger le PDF]({article['pdf_url']})")
-                        st.markdown('</div>', unsafe_allow_html=True)
-                        st.markdown("---")
+                
+                # Afficher les articles associés à cette réponse
+                if "articles" in msg and msg["articles"]:
+                    for article in msg["articles"]:
+                        display_article(article)
 
 def page_statistiques():
     st.markdown("""
@@ -437,23 +468,7 @@ def page_recherche_avancee():
                 st.subheader(f"📋 Résultats ({len(filtered_advanced_results)} )")
                 if filtered_advanced_results:
                     for article in filtered_advanced_results:
-                        st.markdown('<div class="article-card">', unsafe_allow_html=True)
-                        st.markdown(f'<div class="article-title">{article.get("title", "Titre inconnu")}</div>', unsafe_allow_html=True)
-                        
-                        col1, col2 = st.columns([3, 1])
-                        with col1:
-                            st.markdown(f"**Auteurs:** {display_authors(article.get('authors'))}", unsafe_allow_html=True)
-                        with col2:
-                            if article.get('publication_year'):
-                                st.markdown(f'<span class="year-badge">{article["publication_year"]}</span>', unsafe_allow_html=True)
-                        
-                        abstract = article.get('abstract', 'Pas de résumé disponible')
-                        if abstract != 'Pas de résumé disponible':
-                            st.write(f"**Résumé :** {abstract}")
-                        if article.get('pdf_url'):
-                            st.write(f"**PDF:** [Télécharger le PDF]({article['pdf_url']})")
-                        st.markdown('</div>', unsafe_allow_html=True)
-                        st.markdown("---")
+                        display_article(article)
                 else:
                     st.info("Aucun article trouvé avec les critères spécifiés.")
 
@@ -499,7 +514,6 @@ def main():
             st.session_state.current_page = "Recherche Avancée"
         
         st.markdown("---")
-
 
     # Affichage de la page sélectionnée
     if st.session_state.current_page == "Chatbot":
